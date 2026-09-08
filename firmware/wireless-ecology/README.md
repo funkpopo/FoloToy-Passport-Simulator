@@ -6,45 +6,32 @@ Standalone ESP32-C3 / 240 × 320 firmware built with ESP-IDF 5.5.3. References t
 example and reuses display/button BSP from https://github.com/folotoy/ai-passport at
 `df3990726e3751fadaaaa703a480dbba6e13c61b`. License: `components/bsp/LICENSE`.
 
-## Continuous observation
+## Forest view
 
-Boot automatically starts passive 2.4 GHz scans every 5 seconds. Scans never overlap; if a scan
-takes longer, the next starts after completion. Previous results remain visible during scanning
-and errors, with automatic retries. AUTO 5S, update number and scan status/countdown expose refresh activity.
-Stamping, naming, the album and its NVS reads/writes have been removed. Old album data is not erased.
+The UI is now a Chinese “Wireless Little Forest”, with plain-language signal descriptions instead of channel
+numbers, AP counts, dBm axes, peak values, update numbers and countdowns. The explanatory hint row is removed: its 32 pixels now extend the forest from 136 to 168 pixels high, with proportionally taller trees. Tree height still represents signal
+strength; channel order and colors remain internal mappings. A small arrow marks the selected tree.
+Descriptions say that its signal is strong, moderate, weak or fading. Below the strength description, black text shows the selected tree's Wi-Fi name. The green environment summary and automatic-scenery message are removed. Empty scenes display
+one message with a blank name row. Names follow the strongest smoothed AP in that channel, with stable
+identity-based tie breaking. Supports ASCII and basic CJK, scrolls long names, labels hidden networks and
+replaces unsupported or malformed characters with a question mark. Demo remains explicitly labeled and uses
+synthetic names. Displaying a name does not mean the observer connects to that network.
 
-Channels 1–14 occupy fixed left-to-right columns. Each channel has one tree representing the strongest
-smoothed RSSI among retained APs. Trees share shape, width, baseline and scale. Reference lines show
--30, -60 and -90 dBm; stronger signals grow taller. Heights map -95 through -30 dBm to 8–60 logical pixels,
-clamped at the endpoints. Channels 1–4 are green, 5–9 amber and 10–14 blue, matching the ground strip.
-The AP row shows retained AP counts per channel. A highlighted column and bottom detail show the selected
-channel's count and PEAK dBm. Up to 24 APs are tracked; the top AP count is the full scan total, so channel
-statistics represent a subset when the limit is exceeded.
+Live passive scans run every 5 seconds without overlapping. Previous results remain visible on failures and
+retry automatically. UP/DOWN select existing trees, skipping empty positions. Hold DOWN about two seconds to
+switch live/demo. Demo cycles three synthetic environments every 5 seconds. OK requests a rate-limited live
+scan or advances the demo immediately. There is no album, naming, stamping, Internet or AI dependency.
 
-BSSID hashes identify APs and subsequent RSSI uses 3:1 smoothing. APs survive one missed scan and disappear
-after two successful scans omit them. A channel fades and loses its creature when all its retained APs
-have missed one scan. Counts and peak values can include one scan of stale data. The visualization
-cannot measure people or accurately measure channel congestion.
-
-| Button | Action |
-| --- | --- |
-| UP / arrow up | Previous channel, wrapping |
-| DOWN / arrow down | Next channel, wrapping |
-| Hold DOWN about 2 seconds | Switch live / DEMO SYNTHETIC |
-| OK / Enter | Request live scan within the 5-second rate limit; advance demo habitat immediately |
-
-Demo mode automatically cycles three synthetic habitats every 5 seconds. Live and demo scenes are
-independent; an in-flight live scan finishes when switching to demo. No Internet or AI service is needed.
-
-Trees use a pixel pine silhouette with 2–4 tiers of spreading boughs, shaded foliage, brown trunks and flared roots. The tip still corresponds to signal height on the shared scale.
+Each channel tree represents the strongest retained smoothed AP. Up to 24 APs are tracked. RSSI uses 3:1 smoothing,
+with removal after two missed successful scans. Internal strong/moderate/weak thresholds are -55/-75 dBm;
+ These details stay in documentation rather than the UI.
+Physical scan coverage, movement experience and battery cost remain unverified.
 
 ## Simulator and firmware
 
-Run `npm start` at the repository root, visit http://127.0.0.1:4190 and load
-`public/assets/firmware/wireless-ecology.bin`, a Full Flash merged image for offset 0x0.
-The simulator provides virtual Wi-Fi rather than nearby physical APs. First leave buttons untouched
-and check increasing update numbers; then hold DOWN and observe automatic habitat changes. Select
-channels with UP/DOWN and inspect PEAK values.
+Run `npm start`, visit http://127.0.0.1:4190 and load `public/assets/firmware/wireless-ecology.bin`, a merged
+Full Flash image for offset 0x0. The simulator provides virtual Wi-Fi, not nearby physical APs. Hold DOWN to
+watch the automatic demo, then select trees to read the plain-language descriptions.
 
 ## Build and checks
 
@@ -64,6 +51,10 @@ Packaged images and SHA-256 manifest are in `artifacts/wireless-ecology/`. Prese
 Rendering uses a 38,400-byte framebuffer and 4,800-byte DMA stripe. Radio and UI communicate through queues;
 button callbacks do not scan or draw. Host tests cover smoothing, missed scans, channel summaries, peak
 selection, horizontal positioning and height limits. With a server on port 4193, run
-`node tools/ecology-firmware-smoke.mjs` to check automatic live scans, demo updates and channel selection.
+`node tools/ecology-firmware-smoke.mjs` to check Chinese labels, automatic demo updates and tree selection.
 Requires Playwright in `.toolchains/browser` and installed Chrome; override URL using `ECO_TEST_URL`.
 Physical scan coverage, movement experience, display readability and battery cost of 5-second scans remain unverified.
+
+Chinese labels are embedded. Regenerate modified copy with `python tools/generate-ecology-labels.py`, requiring Pillow and Microsoft YaHei on Windows.
+
+SSID glyphs are embedded from `main/name_font.bin`. Regenerate with `python tools/generate-ecology-name-font.py` (Pillow and Microsoft YaHei). Tests cover peak-name association, renames, UTF-8 decoding and simulated Chinese/ASCII names.

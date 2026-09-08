@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #define ECO_CAP 24
-typedef struct { uint32_t id; int16_t rssi; uint8_t channel, misses; } eco_tree;
+typedef struct { uint32_t id; int16_t rssi; uint8_t channel, misses; char ssid[33]; } eco_tree;
 typedef struct { eco_tree trees[ECO_CAP]; uint16_t total; uint8_t added, removed; } eco_scene;
 static inline uint32_t eco_id(const uint8_t mac[6]) {
     uint32_t h = 2166136261u;
@@ -16,14 +16,16 @@ static inline int eco_height(int rssi) {
 }
 /* All channels share a baseline and scale. A channel's tree represents its
  * strongest retained AP; counts make overlapping APs explicit. */
-typedef struct { unsigned count; int rssi; uint8_t stale; } eco_channel;
+typedef struct { unsigned count; int rssi; uint8_t stale; const eco_tree *peak; } eco_channel;
 static inline eco_channel eco_channel_summary(const eco_scene *s, unsigned channel) {
-    eco_channel result = {0, -127, 1};
+    eco_channel result = {0, -127, 1, NULL};
     for (unsigned i=0;i<ECO_CAP;i++) {
         const eco_tree *t=&s->trees[i];
         if (!t->id || t->channel!=channel) continue;
         result.count++;
-        if (t->rssi>result.rssi) result.rssi=t->rssi;
+        if (!result.peak || t->rssi>result.rssi || (t->rssi==result.rssi && t->id<result.peak->id)) {
+            result.rssi=t->rssi; result.peak=t;
+        }
         if (!t->misses) result.stale=0;
     }
     return result;
@@ -46,6 +48,7 @@ static inline void eco_update(eco_scene *s, const eco_tree *input, unsigned coun
         if (j < count) {
             t->rssi = (int16_t)((3 * t->rssi + input[j].rssi) / 4);
             t->channel = input[j].channel;
+            memcpy(t->ssid,input[j].ssid,32); t->ssid[32]='\0';
             t->misses = 0;
         } else if (++t->misses >= 2) { memset(t, 0, sizeof(*t)); ++s->removed; }
     }
@@ -55,7 +58,7 @@ static inline void eco_update(eco_scene *s, const eco_tree *input, unsigned coun
         while (i < ECO_CAP && s->trees[i].id != input[j].id) ++i;
         if (i < ECO_CAP) continue;
         for (i = 0; i < ECO_CAP; ++i) if (!s->trees[i].id) {
-            s->trees[i] = input[j]; s->trees[i].misses = 0; ++s->added; break;
+            s->trees[i] = input[j]; s->trees[i].ssid[32]='\0'; s->trees[i].misses = 0; ++s->added; break;
         }
     }
 }

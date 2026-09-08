@@ -12,6 +12,7 @@ firmware/badge/build/
 firmware/badge/managed_components/
 firmware/badge/sdkconfig
 *.bin
+!firmware/wireless-ecology/main/name_font.bin
 ADVICES.md
 firmware/wireless-ecology/build/
 firmware/wireless-ecology/managed_components/

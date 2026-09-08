@@ -1,8 +1,8 @@
 # FoloToy AI Passport 模拟器
 
 新增「无线生态观察器」固件：加载 `public/assets/firmware/wireless-ecology.bin`，
-每 5 秒自动扫描，按信道排列像素树木，以统一树高刻度表示最强信号，并显示热点数量。
-上下键选择信道，长按 DOWN 切换自动演示；已移除盖章、命名和收藏。操作和编译说明见
+每 5 秒自动更新像素森林，树越高信号越强，中文描述帮助理解身边的无线环境。
+上下键选择树木，长按 DOWN 切换自动演示；界面已简化为无技术指标的观察视图。操作和编译说明见
 [无线生态观察器文档](firmware/wireless-ecology/README.zh_CN.md)。
 
 新增「身份工牌」固件：通过「加载固件」选择 `public/assets/firmware/identity-badge.bin`，
