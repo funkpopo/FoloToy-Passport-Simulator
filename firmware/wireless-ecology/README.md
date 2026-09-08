@@ -2,58 +2,53 @@
 
 # Wireless Ecology Observer
 
-Standalone ESP32-C3 firmware for the 240 × 320 FoloToy AI Passport, built with ESP-IDF 5.5.3.
-Implements concept 4 in the root ADVICES.md. References the Wi-Fi STA scan example and
-reuses display/button BSP from https://github.com/folotoy/ai-passport at
-`df3990726e3751fadaaaa703a480dbba6e13c61b`; license: `components/bsp/LICENSE`.
-RGB565 pixel graphics require no Internet, AI, LVGL or remote assets.
+Standalone ESP32-C3 / 240 × 320 firmware built with ESP-IDF 5.5.3. References the Wi-Fi STA scan
+example and reuses display/button BSP from https://github.com/folotoy/ai-passport at
+`df3990726e3751fadaaaa703a480dbba6e13c61b`. License: `components/bsp/LICENSE`.
 
-## Simulator testing
+## Continuous observation
+
+Boot automatically starts passive 2.4 GHz scans every 5 seconds. Scans never overlap; if a scan
+takes longer, the next starts after completion. Previous results remain visible during scanning
+and errors, with automatic retries. AUTO 5S, update number and scan status/countdown expose refresh activity.
+Stamping, naming, the album and its NVS reads/writes have been removed. Old album data is not erased.
+
+Channels 1–14 occupy fixed left-to-right columns. Each channel has one tree representing the strongest
+smoothed RSSI among retained APs. Trees share shape, width, baseline and scale. Reference lines show
+-30, -60 and -90 dBm; stronger signals grow taller. Heights map -95 through -30 dBm to 8–60 logical pixels,
+clamped at the endpoints. Channels 1–4 are green, 5–9 amber and 10–14 blue, matching the ground strip.
+The AP row shows retained AP counts per channel. A highlighted column and bottom detail show the selected
+channel's count and PEAK dBm. Up to 24 APs are tracked; the top AP count is the full scan total, so channel
+statistics represent a subset when the limit is exceeded.
+
+BSSID hashes identify APs and subsequent RSSI uses 3:1 smoothing. APs survive one missed scan and disappear
+after two successful scans omit them. A channel fades and loses its creature when all its retained APs
+have missed one scan. Counts and peak values can include one scan of stale data. The visualization
+cannot measure people or accurately measure channel congestion.
+
+| Button | Action |
+| --- | --- |
+| UP / arrow up | Previous channel, wrapping |
+| DOWN / arrow down | Next channel, wrapping |
+| Hold DOWN about 2 seconds | Switch live / DEMO SYNTHETIC |
+| OK / Enter | Request live scan within the 5-second rate limit; advance demo habitat immediately |
+
+Demo mode automatically cycles three synthetic habitats every 5 seconds. Live and demo scenes are
+independent; an in-flight live scan finishes when switching to demo. No Internet or AI service is needed.
+
+Trees use a pixel pine silhouette with 2–4 tiers of spreading boughs, shaded foliage, brown trunks and flared roots. The tip still corresponds to signal height on the shared scale.
+
+## Simulator and firmware
 
 Run `npm start` at the repository root, visit http://127.0.0.1:4190 and load
-`public/assets/firmware/wireless-ecology.bin`. This is a merged Full Flash image for offset 0x0,
-not the application-only binary. Boot starts in `LIVE / 2.4 GHZ`.
-The simulator exposes virtual Wi-Fi, not nearby physical access points.
-**Hold DOWN for about two seconds to enter `DEMO / SYNTHETIC`** with three artificial habitats.
+`public/assets/firmware/wireless-ecology.bin`, a Full Flash merged image for offset 0x0.
+The simulator provides virtual Wi-Fi rather than nearby physical APs. First leave buttons untouched
+and check increasing update numbers; then hold DOWN and observe automatic habitat changes. Select
+channels with UP/DOWN and inspect PEAK values.
 
-| Screen | Button | Action |
-| --- | --- | --- |
-| Field | UP / arrow up | Open album |
-| Live field | DOWN / arrow down | Scan again, minimum interval 5 seconds |
-| Demo field | DOWN | Cycle three synthetic habitats |
-| Field | Hold DOWN | Switch live/demo |
-| Field | OK / Enter | Freeze a snapshot and choose its name |
-| Naming | UP / DOWN | Choose one of eight names |
-| Naming | OK | Save stamp to Flash |
-| Naming | Hold OK | Cancel |
-| Album | DOWN | Next stamp |
-| Album | OK | Rename stamp |
-| Album | UP | Return to field |
+## Build and checks
 
-Suggested walkthrough: boot, hold DOWN, cycle habitats, name and save a stamp, open the album,
-browse or rename, return to field, switch back to live. Six snapshots are retained;
-the seventh replaces the oldest slot. Snapshots preserve trees, terrain, name and live/demo provenance.
-Hardware stores the album in NVS. Persistence across simulator restarts depends on whether
-the simulator retains mutated Flash; uploading the original binary resets the album.
-
-## Mapping and limits
-
-BSSID hashes stabilize location, species and creatures across scan ordering. Stronger RSSI
-produces taller trees (8–38 logical pixels), with 3:1 smoothing on later scans. Channels 1–4
-map to green terrain, 5–9 to amber and 10–14 to blue, with an on-screen legend.
-Each tree has a pixel creature. One missed successful scan fades a tree; two remove it.
-Failed scans preserve the previous landscape. The +/- counters show the latest additions/removals.
-Total AP count is displayed, with at most 24 trees including those retained after one missed scan.
-
-Live mode performs passive scans every 30 seconds. Demo, naming and album screens pause automatic
-scans; an in-flight scan may finish. Live and synthetic scenes are independent.
-This is an artistic mapping, not a congestion meter or people counter. ESP32-C3 supports 2.4 GHz only.
-Naming currently offers eight English presets, not free text. Power consumption, scan coverage and
-the experience of moving between locations require physical hardware testing.
-
-## Build and validation
-
-From the repository root (Docker may replace Podman):
+From the root (Docker may replace Podman):
 
 ```powershell
 podman run --rm -v "${PWD}:/project" -w /project/firmware/wireless-ecology docker.io/espressif/idf:v5.5.3 idf.py build merge-bin
@@ -62,18 +57,13 @@ gcc -std=c11 -Wall -Wextra -Werror firmware/wireless-ecology/test_model.c -o .to
 & .toolchains/ecology-test.exe
 ```
 
-Alternatively activate ESP-IDF 5.5.3 and run `idf.py build merge-bin` in this directory.
-The packaging script checks partition MD5, binary contents and protected offsets, writes images
-and a SHA-256 manifest to `artifacts/wireless-ecology/`, and copies the loadable image to
-`public/assets/firmware/`. Preserves the upstream 3 MiB application limit, cardid at 0x356000
-and Recovery at 0x700000. The image is not padded to 8 MiB and does not write factory partitions.
-NVS initialization failure never triggers automatic erasure of existing data.
+Alternatively activate local IDF and run `idf.py build merge-bin` in the firmware directory.
+Packaged images and SHA-256 manifest are in `artifacts/wireless-ecology/`. Preserves the upstream
+3 MiB app limit, cardid at 0x356000 and Recovery at 0x700000. No 8 MiB padding, old NVS erasure or factory writes.
 
-Rendering uses a 38,400-byte logical framebuffer and a 4,800-byte DMA stripe, reused only after
-SPI completion. Button callbacks enqueue events, radio scans run in a worker, and the main task
-serializes rendering and NVS writes. Host tests cover identity, smoothing, transient disappearance,
-reappearance, capacity and RSSI mapping boundaries. Builds and simulator checks do not validate hardware.
-
-Optional simulator check: start a local server on port 4193 and run `node tools/ecology-firmware-smoke.mjs`
-(requires Playwright under `.toolchains/browser` and installed Chrome; override the URL with `ECO_TEST_URL`).
-It checks rendered firmware text and buttons for boot, demo habitats, naming, NVS save, album and rename.
+Rendering uses a 38,400-byte framebuffer and 4,800-byte DMA stripe. Radio and UI communicate through queues;
+button callbacks do not scan or draw. Host tests cover smoothing, missed scans, channel summaries, peak
+selection, horizontal positioning and height limits. With a server on port 4193, run
+`node tools/ecology-firmware-smoke.mjs` to check automatic live scans, demo updates and channel selection.
+Requires Playwright in `.toolchains/browser` and installed Chrome; override URL using `ECO_TEST_URL`.
+Physical scan coverage, movement experience, display readability and battery cost of 5-second scans remain unverified.

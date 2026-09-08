@@ -14,7 +14,6 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
-#include "nvs.h"
 #include "bsp_display.h"
 #include "bsp_button.h"
 #include "badge_font.h"
@@ -23,10 +22,8 @@
 #define RGB(r,g,b) (((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3))
 #define INK RGB(19,36,44)
 #define PAPER RGB(237,231,207)
-#define SLOTS 6
+#define REFRESH_MS 5000
 typedef struct { esp_err_t error; uint16_t count, total; eco_tree trees[ECO_CAP]; } scan_result;
-typedef struct { eco_scene scene; uint8_t name, demo; } stamp;
-typedef struct { uint32_t version, count, next; stamp items[SLOTS]; } album_data;
 typedef struct { int x,y; uint16_t color; char text[32]; } label;
 static QueueHandle_t keys, requests, results;
 static SemaphoreHandle_t dma_done;
@@ -35,14 +32,10 @@ static uint8_t *stripe;
 static label labels[18];
 static unsigned label_count;
 static eco_scene live, sample;
-static album_data album = {.version=1};
-static nvs_handle_t nvs;
-static bool storage_ready, demo, in_album, naming, scanning;
-static unsigned habitat, album_index, name_index;
-static stamp pending;
+static bool demo, scanning;
+static unsigned habitat, selected_channel=1, updates;
 static char notice[32] = "STARTING RADIO";
-static int64_t next_scan, notice_until;
-static const char *names[] = {"MOSS GARDEN", "AMBER GROVE", "TIDAL FOREST", "QUIET VALLEY", "POCKET JUNGLE", "MOON MEADOW", "HIDDEN SPRING", "HOME WOODS"};
+static int64_t next_scan, next_demo, notice_until;
 static const uint16_t terrain[] = {RGB(65,133,103),RGB(179,125,64),RGB(93,123,161)};
 static int64_t now_ms(void) { return esp_timer_get_time()/1000; }
 static void say(const char *s) { snprintf(notice,sizeof(notice),"%s",s); notice_until=now_ms()+3500; }
@@ -84,63 +77,91 @@ static void flush(void) {
         xSemaphoreTake(dma_done,portMAX_DELAY);
     }
 }
+static void number(int x,int y,unsigned value,uint16_t color) {
+    static const uint16_t digits[]={0x7b6f,0x2492,0x73e7,0x73cf,0x5bc9,0x79cf,0x79ef,0x7249,0x7bef,0x7bcf};
+    char str[4]; snprintf(str,sizeof(str),"%u",value);
+    for(unsigned a=0;str[a];a++) for(int row=0;row<5;row++) for(int col=0;col<3;col++)
+        if(digits[str[a]-'0'] & (1u<<(14-row*3-col))) rect(x+a*4+col,y+row,1,1,color);
+}
+static void draw_tree(int x,int base,int height,unsigned band,bool stale) {
+    static const uint16_t shadows[]={RGB(37,88,64),RGB(120,75,36),RGB(49,76,113)};
+    static const uint16_t highlights[]={RGB(137,183,105),RGB(220,174,86),RGB(151,186,196)};
+    uint16_t leaf=stale?RGB(133,140,129):terrain[band];
+    uint16_t shade=stale?RGB(99,109,98):shadows[band];
+    uint16_t light=stale?RGB(168,173,151):highlights[band];
+    uint16_t bark=RGB(104,72,43);
+    int top=base-height;
+    int trunk=height/5; if(trunk<2) trunk=2;
+    int crown=height-trunk;
+    int tiers=height>=36?4:height>=17?3:2;
+    /* Stepped, separate boughs give a pine silhouette even within a 7-pixel
+     * channel. The tip still lies exactly on the RSSI height, roots on baseline. */
+    rect(x,top+1,1,height-1,bark);
+    for(int tier=0;tier<tiers;tier++) {
+        int start=top+tier*crown/tiers;
+        int end=top+(tier+1)*crown/tiers;
+        int length=end-start;
+        int radius=tier==0 && tiers>2?2:3;
+        for(int row=0;row<length;row++) {
+            int width=length>1?row*radius/(length-1):1;
+            rect(x-width,start+row,width*2+1,1,leaf);
+            if(width) {
+                rect(x+width,start+row,1,1,shade);
+                if(row%3==1) rect(x-width,start+row,1,1,light);
+            }
+        }
+        /* Dark undersides separate the overlapping branch tiers. */
+        if(length>2) rect(x-radius+1,end-1,radius*2-1,1,shade);
+    }
+    rect(x,base-trunk,1,trunk,bark);
+    if(trunk>=4) rect(x+1,base-trunk+1,1,trunk-2,RGB(157,113,63));
+    rect(x-1,base-2,3,1,bark);
+    rect(x-2,base-1,5,1,bark);
+}
 static void draw(unsigned frame) {
     label_count=0;
-    const stamp *saved=in_album && album.count ? &album.items[album_index] : NULL;
-    const eco_scene *s=naming ? &pending.scene : saved ? &saved->scene : demo ? &sample : &live;
-    bool synthetic=naming ? pending.demo : saved ? saved->demo : demo;
+    const eco_scene *s=demo?&sample:&live;
     rect(0,0,120,160,PAPER); rect(0,0,120,27,INK);
     text(12,8,PAPER,"WIRELESS ECOLOGY");
-    char line[32];
-    snprintf(line,sizeof(line),"%s  %s",in_album?"ALBUM":"FIELD",synthetic?"DEMO / SYNTHETIC":"LIVE / 2.4 GHZ");
-    text(12,30,RGB(152,206,187),line);
-    rect(0,28,120,88,RGB(161,199,192));
-    rect(90,34,12,12,RGB(247,218,151)); rect(87,37,18,6,RGB(247,218,151));
-    for(int x=0;x<120;x+=4) {
-        int h=4+((x*17+13)%19); rect(x,85-h,4,h+24,RGB(119,165,150));
+    text(12,30,RGB(152,206,187),demo?"DEMO / SYNTHETIC":"LIVE / 2.4 GHZ");
+    char line[96];
+    snprintf(line,sizeof(line),"%u AP   AUTO 5S   #%u",s->total,updates);
+    text(8,57,INK,line);
+    /* Equal baseline and width: channel determines X, RSSI determines height.
+     * One tree per channel is the strongest smoothed AP; counts show multiplicity. */
+    rect(20,40,98,69,RGB(204,220,205));
+    int sx=eco_channel_x(selected_channel);
+    rect(sx-3,40,7,69,RGB(245,224,177));
+    const int ticks[]={-30,-60,-90};
+    for(unsigned j=0;j<3;j++) {
+        int y=108-eco_height(ticks[j]);
+        rect(20,y,98,1,RGB(173,190,174));
+        snprintf(line,sizeof(line),"%d",ticks[j]); text(0,y*2-6,INK,line);
     }
-    rect(0,101,120,15,RGB(42,77,69));
-    /* Draw back-to-front by stable depth. Identity fixes the tree's position. */
-    unsigned drawn=0;
-    for(int depth=0;depth<3;depth++) for(unsigned i=0;i<ECO_CAP;i++) {
-        const eco_tree *t=&s->trees[i]; if(!t->id || (int)((t->id>>8)%3)!=depth) continue;
-        drawn++;
-        int x=8+(t->id%104), base=87+depth*10, h=eco_height(t->rssi);
-        unsigned band=t->channel<=4?0:t->channel<=9?1:2;
-        uint16_t leaf=t->misses ? RGB(135,146,126) : terrain[band];
-        rect(x-7,base,15,3,leaf); rect(x-1,base-h/2,3,h/2,RGB(90,64,45));
-        if(t->id&1) {
-            for(int row=0;row<h-7;row+=3) {
-                int w=3+row/2; rect(x-w/2,base-h+row,w,3,leaf);
-            }
-        } else {
-            rect(x-6,base-h+4,13,h/2,leaf); rect(x-3,base-h,7,h/2+7,leaf);
-            rect(x-4,base-h+5,3,4,RGB(189,208,135));
-        }
-        int bx=x+((frame+(t->id%7))%9)-4, by=base-h-7;
-        rect(bx,by,2,2,RGB(255,242,186));
-        rect(bx+((frame/2)%2?2:-2),by-1,2,1,PAPER);
+    text(0,76,INK,"dBm");
+    for(unsigned ch=1;ch<=14;ch++) {
+        int x=eco_channel_x(ch);
+        eco_channel c=eco_channel_summary(s,ch);
+        unsigned band=ch<=4?0:ch<=9?1:2;
+        rect(x-3,109,7,3,terrain[band]);
+        number(x-(ch>=10?3:1),115,ch,INK);
+        number(x-(c.count>=10?3:1),123,c.count,INK);
+        if(!c.count) continue;
+        int h=eco_height(c.rssi), top=108-h;
+        draw_tree(x,108,h,band,c.stale);
+        if(!c.stale) rect(x+((frame/3+ch)%2?2:-2),top-3,1,1,RGB(112,76,27));
     }
-    if(!drawn) { text(24,135,INK,in_album?"NO STAMPS YET":"WAITING FOR SEEDS"); }
-    rect(4,119,3,3,terrain[0]); text(18,236,INK,"1-4");
-    rect(43,119,3,3,terrain[1]); text(96,236,INK,"5-9");
-    rect(82,119,3,3,terrain[2]); text(174,236,INK,"10-14");
-    if(naming) {
-        rect(6,51,108,47,INK); text(20,110,PAPER,"NAME YOUR STAMP");
-        text(20,135,RGB(247,218,151),names[name_index]);
-        text(20,160,PAPER,"UP/DOWN PICK  OK SAVE");
-        text(12,258,INK,"HOLD OK: CANCEL");
-    } else if(in_album) {
-        snprintf(line,sizeof(line),"STAMP %u/%lu %s",album.count?album_index+1:0,(unsigned long)album.count,saved?names[saved->name]:"");
-        text(8,258,INK,line);
-    } else {
-        snprintf(line,sizeof(line),"%u AP  %u TREES  +%u -%u",s->total,drawn,s->added,s->removed);
-        text(8,258,INK,line);
-    }
-    if(!naming) {
-        text(8,278,INK,in_album?"UP EXIT  DOWN NEXT  OK NAME":"UP ALBUM DOWN SCAN OK STAMP");
-        text(8,298,INK,now_ms()<notice_until?notice:in_album?"SNAPSHOT / FLASH SAVED":scanning&&!demo?"SCANNING...":"HOLD DOWN: LIVE/DEMO");
-    }
+    text(0,226,INK,"CH"); text(0,244,INK,"AP");
+    eco_channel c=eco_channel_summary(s,selected_channel);
+    if(c.count) snprintf(line,sizeof(line),"CH %02u  %u AP  PEAK %d dBm",selected_channel,c.count,c.rssi);
+    else snprintf(line,sizeof(line),"CH %02u  0 AP  NO SIGNAL",selected_channel);
+    text(8,261,INK,line);
+    text(8,280,INK,"UP/DN CH  HOLD DN LIVE/DEMO");
+    if(now_ms()<notice_until) snprintf(line,sizeof(line),"%s",notice);
+    else if(demo) snprintf(line,sizeof(line),"DEMO %u/3  NEXT %lldS",habitat+1,(long long)((next_demo-now_ms()+999)/1000));
+    else if(scanning) snprintf(line,sizeof(line),"SCANNING / PREVIOUS VIEW");
+    else snprintf(line,sizeof(line),"NEXT %lldS  OK: SCAN",(long long)((next_scan-now_ms()+999)/1000));
+    text(8,299,INK,line);
     flush();
 }
 static void make_demo(void) {
@@ -151,6 +172,7 @@ static void make_demo(void) {
         a[count++]=(eco_tree){eco_id(mac),levels[habitat][i],(uint8_t)(1+(i*5)%13),0};
     }
     eco_update(&sample,a,count,count);
+    updates++; next_demo=now_ms()+REFRESH_MS;
     snprintf(notice,sizeof(notice),"DEMO HABITAT %u / 3",habitat+1); notice_until=now_ms()+3500;
 }
 static void radio_worker(void *arg) {
@@ -184,62 +206,30 @@ static void radio_worker(void *arg) {
 static void request_scan(void) {
     if(scanning) return;
     int request=1;
-    if(xQueueSend(requests,&request,0)==pdTRUE) { scanning=true; next_scan=now_ms()+30000; }
+    if(xQueueSend(requests,&request,0)==pdTRUE) { scanning=true; next_scan=now_ms()+REFRESH_MS; }
 }
 static void button(bsp_btn_t key,bsp_btn_ev_t event,void *arg) {
     (void)arg;
     if(event!=BSP_BTN_CLICK && event!=BSP_BTN_LONG) return;
     int value=(int)key+(event==BSP_BTN_LONG?10:0); xQueueSend(keys,&value,0);
 }
-static void save_stamp(void) {
-    if(!storage_ready) { say("STORAGE UNAVAILABLE"); naming=false; return; }
-    album_data updated=album;
-    pending.name=name_index;
-    if(in_album && album.count) updated.items[album_index]=pending;
-    else {
-        updated.items[updated.next]=pending; album_index=updated.next;
-        updated.next=(updated.next+1)%SLOTS;
-        if(updated.count<SLOTS) updated.count++;
-    }
-    esp_err_t err=nvs_set_blob(nvs,"album",&updated,sizeof(updated));
-    if(err==ESP_OK) err=nvs_commit(nvs);
-    naming=false;
-    if(err==ESP_OK) { album=updated; say("STAMP SAVED!"); }
-    else say("SAVE FAILED - RETRY");
-}
 static void handle_key(int key) {
-    if(naming) {
-        if(key==BSP_BTN_UP) name_index=(name_index+7)%8;
-        else if(key==BSP_BTN_DOWN) name_index=(name_index+1)%8;
-        else if(key==BSP_BTN_OK) save_stamp();
-        else if(key==10+BSP_BTN_OK) naming=false;
-        return;
-    }
-    if(key==BSP_BTN_UP) { in_album=!in_album; if(in_album && album.count) album_index=(album.next+SLOTS-1)%SLOTS; }
-    else if(key==BSP_BTN_DOWN) {
-        if(in_album) { if(album.count) album_index=(album_index+1)%album.count; }
-        else if(demo) { habitat=(habitat+1)%3; make_demo(); }
-        else if(now_ms()+25000<next_scan) say("SCAN COOLDOWN: 5 SECONDS");
-        else request_scan();
-    } else if(key==10+BSP_BTN_DOWN && !in_album) {
-        demo=!demo; if(demo) make_demo(); else { say("LIVE RADIO / 2.4 GHZ"); if(now_ms()>=next_scan) request_scan(); }
+    if(key==BSP_BTN_UP) selected_channel=selected_channel==1?14:selected_channel-1;
+    else if(key==BSP_BTN_DOWN) selected_channel=selected_channel%14+1;
+    else if(key==10+BSP_BTN_DOWN) {
+        demo=!demo;
+        if(demo) make_demo();
+        else { say("LIVE / AUTO REFRESH"); if(now_ms()>=next_scan) request_scan(); }
     } else if(key==BSP_BTN_OK) {
-        if(in_album) { if(!album.count) { say("RETURN TO FIELD TO STAMP"); return; } pending=album.items[album_index]; }
-        else { pending=(stamp){.scene=demo?sample:live,.demo=demo}; }
-        name_index=pending.name; naming=true;
+        if(demo) { habitat=(habitat+1)%3; make_demo(); }
+        else if(now_ms()>=next_scan) request_scan();
+        else say("AUTO REFRESH IS RUNNING");
     }
 }
 void app_main(void) {
+    /* Wi-Fi requires NVS initialization; observation never writes album data. */
     esp_err_t err=nvs_flash_init();
-    /* Do not erase existing user or factory NVS when initialization fails. */
-    if(err==ESP_OK && nvs_open("wireless_eco",NVS_READWRITE,&nvs)==ESP_OK) {
-        storage_ready=true; size_t size=sizeof(album); album_data loaded;
-        if(nvs_get_blob(nvs,"album",&loaded,&size)==ESP_OK && size==sizeof(loaded) && loaded.version==1 && loaded.count<=SLOTS && loaded.next<SLOTS) {
-            bool valid=true;
-            for(unsigned i=0;i<loaded.count;i++) if(loaded.items[i].name>=8 || loaded.items[i].demo>1) valid=false;
-            if(valid) album=loaded;
-        }
-    }
+    if(err!=ESP_OK) ESP_LOGW("ecology","NVS init: %s",esp_err_to_name(err));
     keys=xQueueCreate(12,sizeof(int)); requests=xQueueCreate(1,sizeof(int)); results=xQueueCreate(1,sizeof(scan_result));
     dma_done=xSemaphoreCreateBinary(); stripe=heap_caps_malloc(4800,MALLOC_CAP_DMA);
     assert(keys && requests && results && dma_done && stripe);
@@ -252,12 +242,14 @@ void app_main(void) {
     while(true) {
         scan_result result;
         if(xQueueReceive(results,&result,0)==pdTRUE) {
-            scanning=false;
+            scanning=false; updates++;
+            ESP_LOGI("ecology","Scan complete #%u: %s, %u AP",updates,esp_err_to_name(result.error),result.total);
             if(result.error==ESP_OK) { eco_update(&live,result.trees,result.count,result.total); if(!demo) say(result.total?"LANDSCAPE UPDATED":"NO APS / HOLD DOWN: DEMO"); }
-            else { ESP_LOGW("ecology","Scan failed: %s",esp_err_to_name(result.error)); if(!demo) say("SCAN FAILED / DOWN RETRY"); }
+            else { ESP_LOGW("ecology","Scan failed: %s",esp_err_to_name(result.error)); if(!demo) say("SCAN FAILED / AUTO RETRY"); }
         }
         int key; while(xQueueReceive(keys,&key,0)==pdTRUE) handle_key(key);
-        if(!demo && !in_album && !naming && now_ms()>=next_scan) request_scan();
+        if(!demo && now_ms()>=next_scan) request_scan();
+        if(demo && now_ms()>=next_demo) { habitat=(habitat+1)%3; make_demo(); }
         draw(frame++); vTaskDelay(pdMS_TO_TICKS(150));
     }
 }

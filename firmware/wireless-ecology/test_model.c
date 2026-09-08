@@ -13,12 +13,22 @@ int main(void) {
     eco_update(&s,b,2,2); assert(s.trees[0].misses==0);
     eco_update(&s,NULL,0,0); eco_update(&s,NULL,0,0);
     assert(s.removed==2 && !s.trees[0].id);
-    assert(eco_height(-110)==8 && eco_height(-10)==38);
+    assert(eco_height(-110)==8 && eco_height(-10)==60);
     for(int r=-95;r<-30;r++) assert(eco_height(r)<=eco_height(r+1));
     eco_tree many[40];
     for(int i=0;i<40;i++) many[i]=(eco_tree){(uint32_t)i+1,-60,6,0};
     eco_update(&s,many,40,40); assert(s.added==24 && s.total==40);
     eco_update(&s,many,40,40); assert(!s.added && !s.removed);
+    eco_channel c=eco_channel_summary(&s,6);
+    assert(c.count==24 && c.rssi==-60 && !c.stale);
+    assert(eco_channel_summary(&s,1).count==0);
+    s.trees[3].rssi=-32;
+    assert(eco_channel_summary(&s,6).rssi==-32);
+    eco_update(&s,NULL,0,0); assert(eco_channel_summary(&s,6).stale);
+    eco_update(&s,NULL,0,0); assert(!eco_channel_summary(&s,6).count);
+    assert(eco_channel_x(0)==eco_channel_x(1) && eco_channel_x(15)==eco_channel_x(14));
+    for(unsigned ch=1;ch<14;ch++) assert(eco_channel_x(ch+1)-eco_channel_x(ch)==7);
+    assert(eco_channel_x(1)-3>=20 && eco_channel_x(14)+3<120);
     uint8_t mac[6]={1,2,3,4,5,6}; assert(eco_id(mac)==eco_id(mac) && eco_id(mac)!=0);
     puts("Ecology model PASS: identity, smoothing, disappearance, limits, RSSI.");
 }

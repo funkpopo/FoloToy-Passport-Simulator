@@ -30,25 +30,23 @@ try {
   }
   await mkdir('artifacts/wireless-ecology',{recursive:true});
   await expectText(12,8,'WIRELESS ECOLOGY',[237,231,207]);
-  await expectText(12,30,'FIELD  LIVE / 2.4 GHZ',[152,206,187]);
+  await expectText(12,30,'LIVE / 2.4 GHZ',[152,206,187]);
+  // App logs use USB Serial/JTAG, while the simulator UART contains boot logs.
+  // Verify the rendered update counter instead of relying on a different console.
+  await expectText(8+'0 AP   AUTO 5S   '.length*8,57,'#2',[19,36,44]);
+  console.log('PASS two automatic live scan completions without button input');
   await key('DOWN',true);
-  await expectText(12,30,'FIELD  DEMO / SYNTHETIC',[152,206,187]);
-  await page.locator('#qemu-display').screenshot({path:'artifacts/wireless-ecology/demo.png'});
-  await key('DOWN');
-  await expectText(8,298,'DEMO HABITAT 2 / 3',[19,36,44]);
-  await key('OK');
-  await expectText(20,110,'NAME YOUR STAMP',[237,231,207]);
-  await key('DOWN');
-  await expectText(20,135,'AMBER GROVE',[247,218,151]);
-  await key('OK');
-  await expectText(8,298,'STAMP SAVED!',[19,36,44]);
-  await key('UP');
-  await expectText(12,30,'ALBUM  DEMO / SYNTHETIC',[152,206,187]);
-  await expectText(8,258,'STAMP 1/1 AMBER GROVE',[19,36,44]);
-  await page.locator('#qemu-display').screenshot({path:'artifacts/wireless-ecology/album.png'});
-  await key('OK'); await key('DOWN'); await key('OK');
-  await expectText(8,258,'STAMP 1/1 TIDAL FOREST',[19,36,44]);
-  await key('UP'); await key('DOWN',true);
-  await expectText(12,30,'FIELD  LIVE / 2.4 GHZ',[152,206,187]);
-  console.log('Simulator PASS: boot, live/demo, habitat cycling, naming, NVS save, album, rename, return to live.');
+  await expectText(12,30,'DEMO / SYNTHETIC',[152,206,187]);
+  await expectText(8,261,'CH 01',[19,36,44]);
+  await expectText(8,299,'DEMO HABITAT 2 / 3',[19,36,44]);
+  console.log('PASS automatic demo habitat refresh without button input');
+  const data=await page.locator('#qemu-display').evaluate(c=>c.toDataURL().split(',')[1]);
+  await (await import('node:fs/promises')).writeFile('artifacts/wireless-ecology/channel-view.png',Buffer.from(data,'base64'));
+  await key('DOWN'); await expectText(8,261,'CH 02',[19,36,44]);
+  await key('UP'); await expectText(8,261,'CH 01',[19,36,44]);
+  await key('OK'); await expectText(12,30,'DEMO / SYNTHETIC',[152,206,187]);
+  await expectText(8,280,'UP/DN CH  HOLD DN LIVE/DEMO',[19,36,44]);
+  await key('DOWN',true);
+  await expectText(12,30,'LIVE / 2.4 GHZ',[152,206,187]);
+  console.log('Simulator PASS: automatic live scans, automatic demo, channel selection, OK stays in observer, return to live.');
 } finally { await browser.close(); }
