@@ -1,5 +1,10 @@
 # FoloToy AI Passport 模拟器
 
+新增「无线生态观察器」固件：加载 `public/assets/firmware/wireless-ecology.bin`，
+将 Wi-Fi 信号强度、信道映射成像素树木与地形。长按 DOWN 切换三组演示环境，
+OK 选择名称并盖章保存，UP 打开收藏册。操作和编译说明见
+[无线生态观察器文档](firmware/wireless-ecology/README.zh_CN.md)。
+
 新增「身份工牌」固件：通过「加载固件」选择 `public/assets/firmware/identity-badge.bin`，
 未配置时直接显示三页离线示例，可在模拟器内按键验证资料、头像和测试二维码。
 长按确认键显示手机配置地址；真机通过设备 Wi-Fi 热点修改资料。独立 `/badge.html` 演示已移除。

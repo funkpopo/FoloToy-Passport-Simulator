@@ -12,3 +12,8 @@ firmware/badge/build/
 firmware/badge/managed_components/
 firmware/badge/sdkconfig
 *.bin
+ADVICES.md
+firmware/wireless-ecology/build/
+firmware/wireless-ecology/managed_components/
+firmware/wireless-ecology/sdkconfig
+firmware/wireless-ecology/sdkconfig.old
