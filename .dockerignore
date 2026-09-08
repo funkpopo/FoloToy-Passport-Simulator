@@ -1,6 +1,9 @@
 .build
 .dbg
 .git
+reference
+.badge-data
+.toolchains
 artifacts
 dist
 firmware

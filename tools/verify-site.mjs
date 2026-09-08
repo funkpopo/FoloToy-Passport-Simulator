@@ -28,6 +28,7 @@ for (const { expected, filename } of checksums) {
 
 for (const required of [
   "server.mjs",
+  "public/assets/firmware/identity-badge.bin",
   "community-import.mjs",
   "package.json",
   "release-manifest.json",

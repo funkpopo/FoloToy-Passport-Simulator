@@ -5,3 +5,10 @@ artifacts/
 /*.bin
 tools/.smoke-*-temp.mjs
 .DS_Store
+reference/
+.badge-data/
+.toolchains/
+firmware/badge/build/
+firmware/badge/managed_components/
+firmware/badge/sdkconfig
+*.bin

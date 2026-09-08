@@ -1,0 +1,7 @@
+# Preserve upstream application limit and factory-owned partitions.
+nvs,      data, nvs,     0x9000,   0x6000,
+phy_init, data, phy,     0xf000,   0x1000,
+factory,  app,  factory, 0x10000,  0x300000,
+cardid,   data, nvs,     0x356000, 0x4000,
+badge,    data, spiffs,  0x35a000, 0x3a6000,
+recovery, app,  test,    0x700000, 0x100000,

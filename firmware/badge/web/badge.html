@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>身份工牌 · FoloToy</title><link rel="stylesheet" href="/badge.css"><script type="module" src="/badge.js"></script></head>
+<body>
+<header><a class="brand" href="/">FoloToy <span>／ 身份工牌</span></a><span class="tag">PERSONAL PASSPORT</span></header>
+<main>
+<section class="intro"><p class="eyebrow">HELLO, THIS IS ME.</p><h1>把自己，介绍得更简单。</h1><p>一张工牌，三个侧面。资料、微信头像和二维码，随手切换。</p></section>
+<div class="workspace">
+<section class="preview"><div class="preview-top"><span>工牌预览</span><span id="connection">正在连接…</span></div>
+<div class="lanyard"></div><div class="device"><div class="slot"></div><canvas id="screen" width="240" height="320" aria-label="工牌屏幕"></canvas><div class="device-brand">FoloToy <span>AI PASSPORT</span></div><div class="keys"><button id="prev" aria-label="上一页">↑</button><button id="next" aria-label="下一页">↓</button><button id="ok" aria-label="切换头像与二维码">●</button></div></div>
+<nav class="tabs" aria-label="工牌页面"><button data-page="0" class="active">个人资料</button><button data-page="1">微信头像</button><button data-page="2">微信二维码</button></nav>
+<p class="hint">↑ ↓ 翻页 · 确认键切换头像 / 二维码<br>键盘方向键和 Enter 也可以操作</p>
+<details class="phone"><summary>连接手机修改资料</summary><p id="phone-help">手机连接工牌 Wi-Fi 后，打开 http://192.168.4.1，输入屏幕上的配置密码。</p><div id="phone-links"></div><label>配置密码<input id="pair-key" type="password" autocomplete="off" placeholder="输入设备屏幕上的密码"></label><button id="pair" class="secondary">连接</button></details>
+</section>
+<section class="editor"><div class="section-title"><div><p class="eyebrow">MAKE IT YOURS</p><h2>我的名片</h2></div><span id="dirty" class="tag">尚未修改</span></div>
+<form id="profile-form"><div class="fields"><label>姓名<input name="name" maxlength="16" required placeholder="你的名字"></label><label>职位<input name="role" maxlength="24" placeholder="例如：产品设计师"></label><label>公司 / 团队<input name="company" maxlength="24" placeholder="你所在的团队"></label><label>微信号<input name="wechat" maxlength="32" placeholder="用于展示，不会自动生成加好友二维码"></label></div><label>一句话介绍<input name="bio" maxlength="38" placeholder="聊聊你正在做的事"></label>
+<div class="uploads"><label class="upload">微信头像<span>选择头像，自动居中裁切</span><input id="avatar" type="file" accept="image/png,image/jpeg,image/webp"><button type="button" data-clear="avatar" class="clear">移除头像</button></label><label class="upload">微信二维码<span>微信 → 我的二维码，保存图片后上传</span><input id="qr" type="file" accept="image/png,image/jpeg,image/webp"><button type="button" data-clear="qr" class="clear">移除二维码</button></label></div>
+<p class="note">请上传真实的微信二维码，推荐只保留完整二维码及四周白边。保存后请用另一台手机实际扫码验证。</p>
+<div class="actions"><button id="save" type="submit">保存到工牌 <span>↗</span></button><button id="restore" type="button" class="secondary">撤销修改</button></div><p id="status" role="status" aria-live="polite"></p>
+</form></section></div>
+<footer>240 × 320 · 基于 FoloToy AI Passport <span id="mode">浏览器演示 / 手机配置</span></footer>
+</main></body></html>

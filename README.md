@@ -1,5 +1,10 @@
 # FoloToy AI Passport 模拟器
 
+新增「身份工牌」固件：通过「加载固件」选择 `public/assets/firmware/identity-badge.bin`，
+未配置时直接显示三页离线示例，可在模拟器内按键验证资料、头像和测试二维码。
+长按确认键显示手机配置地址；真机通过设备 Wi-Fi 热点修改资料。独立 `/badge.html` 演示已移除。
+编译、烧录和手机使用说明见 [身份工牌文档](firmware/badge/README.zh_CN.md)。
+
 [![FoloToy AI Passport 模拟器演示](./public/assets/demo/folotoy-emu.gif)](./public/assets/demo/folotoy-emu.mp4)
 
 > 点击可观看视频！
