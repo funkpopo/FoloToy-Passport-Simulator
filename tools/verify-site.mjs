@@ -30,6 +30,7 @@ for (const required of [
   "server.mjs",
   "public/assets/firmware/identity-badge.bin",
   "community-import.mjs",
+  "logging.mjs",
   "package.json",
   "release-manifest.json",
   "public/index.html",
